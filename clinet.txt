@@ -1,0 +1,112 @@
+/*
+
+Name: Muhammad Haseeb Ahmad
+Course: Advance System's Programming
+Course ID: COMP8527
+Members: Individual
+Section: 3
+client.c
+
+
+*/
+
+
+#include <stdio.h>  //standard input output
+#include <stdlib.h>    //standard Library
+#include <string.h>   //handling strings
+#include <unistd.h>   //POSIX
+#include <arpa/inet.h>   //network when used on thwo systesm
+#include <sys/types.h> //symbol and structure of typetdef
+#include <sys/stat.h>   //data return strructures
+#include <fcntl.h>   //posix
+#include <dirent.h>   //directoruies 
+#include <errno.h>  //error handling
+#include <sys/wait.h> //wait
+
+
+#define PORT 4500          //portnumber
+#define MAX_COMMAND_SIZE 1024     //load
+
+void receive_archive(int client_socket) {              //recive from server
+    off_t file_size;
+    recv(client_socket, &file_size, sizeof(off_t), 0);
+
+    char archive_name[] = "received_archive.tar.gz";     /arr anme 
+    int fd = open(archive_name, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    if (fd == -1) {
+        perror("Error opening archive file occured");
+        return;
+    }
+
+    char buffer[1024];
+    ssize_t received_size = 0, read_size;
+
+    while (received_size < file_size) {
+        read_size = recv(client_socket, buffer, sizeof(buffer), 0);
+        if (read_size <= 0) {
+            perror("Error receiving archive");
+            break;
+        }
+
+        ssize_t written = write(fd, buffer, read_size);
+        if (written == -1) {
+            perror("Error writing to archive file");
+            break;
+        }
+
+        received_size += written;
+    }
+
+    printf("[*] Received %zd bytes of archive: %s\n", received_size, archive_name);
+
+    close(fd);
+}
+
+void start_client() {        //run the client code mens starint the client
+    int client_socket;       //cli socket
+    struct sockaddr_in server_addr;     //socket address -> 
+
+    if ((client_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+        perror("Error creating socket");
+        exit(EXIT_FAILURE);
+    }
+
+    memset(&server_addr, 0, sizeof(server_addr));   //socket
+    server_addr.sin_family = AF_INET; //socket
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1"); //if on local machine 
+    server_addr.sin_port = htons(PORT);   //htons
+
+    if (connect(client_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
+        perror("Error connecting to server");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("[*] Connected to the server. Type 'quitc' to exit. Use 'getfn filename' to copy a file to f23project folder. Use 'getfz size1 size2' to get files within the specified size range. Use 'getft ext1 ext2 ext3' to get files with specific extensions.\n");
+
+    while (1) { //while quitc
+        char command[MAX_COMMAND_SIZE];
+        printf(">>> ");
+        fgets(command, sizeof(command), stdin);
+
+        send(client_socket, command, strlen(command), 0);
+
+        if (strncmp(command, "quitc", 5) == 0) {
+            break;
+        }
+
+        char response[10];
+        recv(client_socket, response, sizeof(response), 0);
+        if (strncmp(response, "Archive", 7) == 0) {
+            receive_archive(client_socket);
+        } else {
+            printf("[*] Server response: %s\n", response);
+        }
+    }
+
+    close(client_socket);
+}
+
+int main() {
+    start_client();  //start client
+    return 0;
+}
